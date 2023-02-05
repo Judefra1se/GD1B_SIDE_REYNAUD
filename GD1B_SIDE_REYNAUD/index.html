@@ -1,0 +1,282 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8" /><title>Cristal race</title>
+    <script
+    src="//cdn.jsdelivr.net/npm/phaser@3.55.2/dist/phaser.js">
+</script>
+<style type="text/css"> 
+body, html { 
+    margin: 0; 
+    width: 100%;
+    height: 100%;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+}
+@media (max-aspect-ratio: 1/1) {
+    canvas{
+        width: 100vw;
+    }
+}
+@media (min-aspect-ratio: 1/1) {
+    canvas{
+        width: calc(100vh * (16/10));
+    }
+}
+</style>
+</head>
+
+<body>
+    <script type="text/javascript">
+        
+        //CONFIG
+        var config = {
+            type: Phaser.AUTO,
+            width: 1600, height: 950,
+            
+            physics: {
+                default: 'arcade',
+                arcade: {
+                    gravity: { y: 1000 },
+                    debug: false
+                }},
+                input: {
+                    gamepad: true,
+                },
+                scene: {preload: preload, create: create, update: update }
+            };
+            
+            new Phaser.Game(config);
+            
+            var gamepadConnected = false;
+            var gamepad;
+            var gamepadButtons;
+            
+            
+            //PRELOAD
+            function preload(){
+                this.load.image('Background', 'Background.png');
+                this.load.image("Phaser_assets", "assets.png");
+                this.load.image('piques', 'piques.png');
+                this.load.image('eau', 'Eau.png');
+                this.load.image('surface', 'Surface.png');
+                this.load.image('consommable', 'consommable.png');
+                this.load.tilemapTiledJSON("carte", "map.json");
+                this.load.spritesheet('perso','perso.png',
+                { frameWidth: 64, frameHeight: 64    });
+            }
+            var gameOver = false; 
+            
+            
+            
+            //CREATE
+            function create(){
+                this.add.image(800, 800, 'Background');
+                
+                const carteDuNiveau = this.add.tilemap("carte");
+                const tileset = carteDuNiveau.addTilesetImage(
+                "assets",
+                "Phaser_assets"
+                );  
+                const plateforme = carteDuNiveau.createLayer(
+                "Colliders",
+                tileset
+                );
+
+                plateforme.setCollisionByProperty({ estSolide: true }); 
+                this.player = this.physics.add.sprite(100,1600, 'perso');
+                this.player.setScale(0.5)
+                this.player.setCollideWorldBounds(true);
+                this.physics.add.collider(this.player, plateforme);
+                this.physics.world.setBounds(0, 0, 1600, 1600); 
+                
+                
+                this.cameras.main.setBounds(0, 0, 1600, 1600);
+                this.cameras.main.zoom = 2;
+                this.cameras.main.startFollow(this.player);
+
+            
+            
+            
+            
+            
+            
+        
+
+                //Implémentations touches.
+                this.cursors = this.input.keyboard.createCursorKeys();
+                this.clavier = this.input.keyboard.addKeys('A,D,SPACE');
+
+                //Ajouter l'indication de score.
+                scoreText=this.add.text(400,250,'score: 0',{fontSize:'32px',fill:'#000'});
+                scoreText.setScrollFactor(0)
+                score=0
+
+
+                //Implémentation des piques via un calque d'objet Tiled.
+                piques = this.physics.add.group();
+                    calque_piques = carteDuNiveau.getObjectLayer('Piques');
+                    calque_piques.objects.forEach(calque_piques => {
+                        const printPiques = piques.create( calque_piques.x +16, calque_piques.y -8,"piques" ).body.setAllowGravity(false).setImmovable(true);
+                    });
+                
+                //Ajouter un lien physique entre le joueur et les pics relié à la fonction mortPiques qui tue le joueur quand il touche les piques.
+                this.physics.add.collider(this.player, piques, mortPiques, null, this)
+
+
+                //Implémentation de l'eau via un calque d'objet Tiled.
+                eau = this.physics.add.group();
+                    calque_eau = carteDuNiveau.getObjectLayer('eau');
+                    calque_eau.objects.forEach(calque_eau => {
+                        const printEau = eau.create( calque_eau.x +16, calque_eau.y -8,"eau" ).body.setAllowGravity(false).setImmovable(true);
+                    });
+                
+                //Ajouter un lien physique entre le joueur et les pics relié à la fonction mortEau qui tue le joueur quand il touche l'eau.
+                this.physics.add.collider(this.player, eau, mortEau, null, this)
+
+
+                //Implémentation de la surface de l'eau via un calque d'objet Tiled. 
+                surface = this.physics.add.group();
+                    calque_surface = carteDuNiveau.getObjectLayer('surface');
+                    calque_surface.objects.forEach(calque_surface => {
+                        const printSurface = surface.create( calque_surface.x + 16, calque_surface.y -4, "surface").body.setAllowGravity(false).setImmovable(true);
+                    });
+                //Pas d'ajout de lien physique entre le joueur et la surface pour avoir un côté "sous l'eau" quand il tombe et meurt dans l'eau.   
+                
+                //Implémentation cristaux consommables.
+                this.consommable = this.physics.add.sprite(770, 1245, 'consommable');
+                this.consommable.setScale(0.015)
+                this.consommable.setCollideWorldBounds(true);
+                this.consommable.body.setAllowGravity(false).setImmovable(true)
+                this.physics.add.collider(this.player, this.consommable,collectConso, null, this);
+            }
+
+            //UPDATE
+            walljump =false;
+
+function update(){
+
+    if (gameOver){return;}
+
+    //Implémentation des déplacemetns et du walljump
+    if (this.cursors.left.isDown && !this.onWallGauche && !walljump){
+        this.player.setVelocityX(-160);//le joueur se dirige vers la gauche
+    }
+
+    else if (this.onWallGauche && this.cursors.up.isDown){
+        walljump=true;
+        this.player.setVelocityY(-450);
+        this.player.setVelocityX(170); 
+        this.onWallGauche=false;
+        setTimeout(() => {
+            walljump=false;
+        }, 450); //le joueur saute 
+    }
+    
+    else if (this.cursors.right.isDown && !this.onWallGauche && !walljump){
+        this.player.setVelocityX(160); //le joueur se dirige vers la droite
+        
+    }
+
+
+    else if (this.onWallDroit && this.cursors.up.isDown){
+        walljump=true;
+        this.player.setVelocityY(-450);
+        this.player.setVelocityX(-170);
+        this.onWallDroit=false;
+        setTimeout(() => {
+            walljump=false;
+        }, 450);//le joueur saute 
+
+
+    }
+
+    else if (!walljump){
+        this.player.setVelocityX(0); //le joueur ne bouge pas 
+        
+    }
+
+
+
+
+
+    if (this.cursors.up.isDown && this.player.body.blocked.down){
+        //si touche haut appuyée ET que le perso touche le sol
+        this.player.setVelocityY(-450); 
+
+
+
+        
+        this.canJump = false;
+
+        
+        this.onWallDroit = false;
+        this.onWallGauche = false;
+
+
+
+
+    }
+
+    if (this.cursors.down.isDown && !this.player.body.touching.down){
+        this.player.setVelocityY(450); 
+    } 
+
+    if(this.player.body.blocked.down){
+
+        
+        this.canJump = true;
+
+        
+        this.onWallDroit = false;
+        this.onWallGauche = false;
+    }
+
+
+
+    if(this.player.body.blocked.right && !this.player.body.blocked.down){
+
+        this.onWallDroit = true;
+    }
+
+
+
+    if(this.player.body.blocked.left && !this.player.body.blocked.down){
+        this.onWallGauche = true;
+        
+    }
+
+
+}
+
+            //Fonction pour faire mourir le joueur lorsqu'il touche les piques.
+            function mortPiques(player, piques){
+                this.physics.pause();
+                gameOver = true
+            }
+            
+            //Fonction pour faire mourir le joueur lorsqu'il touche l'eau.
+            function mortEau(player, Eau){
+                this.physics.pause();
+                gameOver = true 
+            }
+            
+
+            
+            //Fonction qui permet au joueur de ramasser les cristaux consommables qui augmenteront alors leur score.
+
+            function collectConso(player, consommable){
+                consommable.disableBody(true, true);
+                score += 1; 
+                scoreText.setText('Score: '+score);
+            }
+            
+            
+        </script>
+    </body>
+    
+    </html>
+    
+    
